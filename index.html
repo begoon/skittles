@@ -222,6 +222,57 @@ let lastT = performance.now();
 // Audio (Web Audio synth — no external samples)
 // ============================================================
 let audio = null;
+let silentAudio = null;
+
+// Build a tiny silent WAV (50ms, mono, 8kHz) as a base64 data URI.
+// iOS Safari swaps its audio session category from "UI sounds" (muted by
+// the ringer switch) to "media" (ignores the switch) as soon as an
+// <audio> element with real media data has played. We use this audio
+// only for that side effect.
+function silentWavDataUri() {
+  const sr = 8000, dur = 0.05;
+  const samples = Math.floor(sr * dur);
+  const bytes = new Uint8Array(44 + samples * 2);
+  const dv = new DataView(bytes.buffer);
+  const wstr = (off, s) => { for (let i = 0; i < s.length; i++) bytes[off+i] = s.charCodeAt(i); };
+  wstr(0,  "RIFF"); dv.setUint32(4,  36 + samples*2, true);
+  wstr(8,  "WAVE"); wstr(12, "fmt ");
+  dv.setUint32(16, 16, true);          // PCM chunk size
+  dv.setUint16(20, 1, true);           // PCM
+  dv.setUint16(22, 1, true);           // mono
+  dv.setUint32(24, sr, true);          // sample rate
+  dv.setUint32(28, sr * 2, true);      // byte rate
+  dv.setUint16(32, 2, true);           // block align
+  dv.setUint16(34, 16, true);          // bits/sample
+  wstr(36, "data"); dv.setUint32(40, samples * 2, true);
+  // samples remain zero (silence)
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return "data:audio/wav;base64," + btoa(bin);
+}
+
+function unlockIOSAudioSession() {
+  // Modern path: AudioSession API (Safari 16.4+ / iOS 16.4+).
+  // "playback" means: this is media, ignore the ringer/silent switch.
+  if (navigator.audioSession) {
+    try { navigator.audioSession.type = 'playback'; } catch (e) {}
+  }
+  // Fallback path: play a silent <audio> inside the user gesture, which
+  // promotes the page's audio session to "media" on older iOS.
+  if (!silentAudio) {
+    const a = document.createElement('audio');
+    a.setAttribute('playsinline', '');
+    a.setAttribute('webkit-playsinline', '');
+    a.loop = true;
+    a.preload = 'auto';
+    a.src = silentWavDataUri();
+    silentAudio = a;
+  }
+  // .play() must run synchronously inside the gesture; ignore rejections.
+  const p = silentAudio.play();
+  if (p && p.catch) p.catch(()=>{});
+}
+
 function initAudio() {
   if (audio) return;
   try {
@@ -422,11 +473,11 @@ function throwBat(randomly=false) {
 window.addEventListener('keydown', e => {
   if (e.code === 'Space') {
     e.preventDefault();
-    initAudio(); resumeAudio();
+    initAudio(); unlockIOSAudioSession(); resumeAudio();
     if (gameOver) { startGame(); return; }
     throwBat(false);
   }
-  if (e.code === 'KeyR') { initAudio(); resumeAudio(); startGame(); }
+  if (e.code === 'KeyR') { initAudio(); unlockIOSAudioSession(); resumeAudio(); startGame(); }
 });
 cv.addEventListener('mousedown', e => {
   initAudio(); resumeAudio();
