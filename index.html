@@ -8,8 +8,8 @@
   html, body {
     margin: 0;
     padding: 0;
-    background: #0a0a0a;
-    color: #c8e6b3;
+    background: #f4ecd8;
+    color: #4a3a22;
     font-family: "Courier New", monospace;
     overflow: hidden;
     user-select: none;
@@ -27,19 +27,19 @@
     flex-direction: column;
     gap: 4px;
     padding: 8px 12px;
-    background: #1b2a1b;
-    border: 2px solid #4a7a3a;
+    background: #eadfc4;
+    border: 2px solid #b08a55;
     border-bottom: none;
     font-size: 14px;
     letter-spacing: 1px;
   }
   #hud .row { display: flex; justify-content: space-between; gap: 8px; }
   #hud .cell { display: flex; gap: 8px; white-space: nowrap; }
-  #hud .label { color: #6f9a5a; }
-  #hud .value { color: #d8ff9a; font-weight: bold; }
+  #hud .label { color: #8a6a3a; }
+  #hud .value { color: #3a2a14; font-weight: bold; }
   canvas {
-    background: #0f1a0f;
-    border: 2px solid #4a7a3a;
+    background: #fbf4df;
+    border: 2px solid #b08a55;
     image-rendering: pixelated;
     display: block;
     touch-action: manipulation;
@@ -51,11 +51,11 @@
   #help {
     width: 600px;
     padding: 6px 12px;
-    background: #1b2a1b;
-    border: 2px solid #4a7a3a;
+    background: #eadfc4;
+    border: 2px solid #b08a55;
     border-top: none;
     font-size: 12px;
-    color: #7fa86a;
+    color: #6a5230;
     text-align: center;
     letter-spacing: 1px;
   }
@@ -790,10 +790,10 @@ function drawBat() {
 
 function drawSquare() {
   // The "city"
-  ctx.fillStyle = "#15301a";
+  ctx.fillStyle = "#f0e2bb";
   ctx.fillRect(SQ.x, SQ.y, SQ.w, SQ.h);
   // crosshatch
-  ctx.strokeStyle = "rgba(80,140,90,0.18)";
+  ctx.strokeStyle = "rgba(150,110,60,0.22)";
   ctx.lineWidth = 1;
   for (let i = 1; i < 8; i++) {
     ctx.beginPath();
@@ -804,11 +804,11 @@ function drawSquare() {
     ctx.stroke();
   }
   // border
-  ctx.strokeStyle = "#7fd06a";
+  ctx.strokeStyle = "#8a5a2a";
   ctx.lineWidth = 3;
   ctx.strokeRect(SQ.x, SQ.y, SQ.w, SQ.h);
   // corner brackets
-  ctx.strokeStyle = "#cfff9a";
+  ctx.strokeStyle = "#5a3a1a";
   ctx.lineWidth = 2;
   const c = 14;
   [[SQ.x, SQ.y, 1, 1],[SQ.x+SQ.w, SQ.y, -1, 1],[SQ.x, SQ.y+SQ.h, 1, -1],[SQ.x+SQ.w, SQ.y+SQ.h, -1, -1]].forEach(([x,y,sx,sy])=>{
@@ -825,7 +825,7 @@ function drawThrowLine() {
   ctx.save();
   ctx.translate(PIVOT.x, PIVOT.y);
   ctx.rotate(bat.angle);
-  ctx.strokeStyle = "rgba(120,255,120,0.25)";
+  ctx.strokeStyle = "rgba(120,80,30,0.35)";
   ctx.setLineDash([4, 6]);
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -837,11 +837,11 @@ function drawThrowLine() {
 }
 
 function drawPivot() {
-  ctx.fillStyle = "#3a5a2a";
+  ctx.fillStyle = "#c9a76a";
   ctx.beginPath();
   ctx.arc(PIVOT.x, PIVOT.y, 8, 0, Math.PI*2);
   ctx.fill();
-  ctx.strokeStyle = "#7fd06a";
+  ctx.strokeStyle = "#5a3a1a";
   ctx.lineWidth = 2;
   ctx.stroke();
 }
@@ -852,34 +852,34 @@ function drawTimer() {
   const y = PIVOT.y + 36;
   // label
   ctx.textAlign = "center";
-  ctx.fillStyle = "#6f9a5a";
+  ctx.fillStyle = "#8a6a3a";
   ctx.font = "12px Courier New";
   ctx.fillText("TIMER", PIVOT.x, y);
   // value
-  ctx.fillStyle = urgent ? (Math.floor(t * 6) % 2 ? "#ff6a6a" : "#ffd86a") : "#d8ff9a";
+  ctx.fillStyle = urgent ? (Math.floor(t * 6) % 2 ? "#c93030" : "#d68a10") : "#3a2a14";
   ctx.font = "bold 28px Courier New";
   ctx.fillText(t.toFixed(1), PIVOT.x, y + 26);
   // progress bar
   const bw = 160, bh = 6;
   const bx = PIVOT.x - bw/2, by = y + 36;
-  ctx.fillStyle = "#1b2a1b";
+  ctx.fillStyle = "#eadfc4";
   ctx.fillRect(bx, by, bw, bh);
-  ctx.fillStyle = urgent ? "#ff6a6a" : "#7fd06a";
+  ctx.fillStyle = urgent ? "#c93030" : "#7a9e3a";
   ctx.fillRect(bx, by, bw * (t / 5.0), bh);
-  ctx.strokeStyle = "#4a7a3a";
+  ctx.strokeStyle = "#b08a55";
   ctx.lineWidth = 1;
   ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
 }
 
 function drawOverlay() {
   if (!gameOver) return;
-  ctx.fillStyle = "rgba(0,0,0,0.78)";
+  ctx.fillStyle = "rgba(244,236,216,0.92)";
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = wonGame ? "#d8ff9a" : "#ff9a9a";
+  ctx.fillStyle = wonGame ? "#5a8a2a" : "#a83030";
   ctx.textAlign = "center";
   ctx.font = "bold 36px Courier New";
   ctx.fillText(wonGame ? "YOU WIN!" : "GAME OVER", W/2, H/2 - 30);
-  ctx.fillStyle = "#c8e6b3";
+  ctx.fillStyle = "#3a2a14";
   ctx.font = "20px Courier New";
   ctx.fillText("SCORE: " + score, W/2, H/2 + 10);
   ctx.font = "16px Courier New";
@@ -888,20 +888,23 @@ function drawOverlay() {
 
 function drawClearedBanner() {
   if (!cleared) return;
-  ctx.fillStyle = "rgba(0,40,0,0.7)";
+  ctx.fillStyle = "rgba(255,250,230,0.9)";
   ctx.fillRect(SQ.x, SQ.y + SQ.h/2 - 30, SQ.w, 60);
-  ctx.fillStyle = "#d8ff9a";
+  ctx.strokeStyle = "#8a5a2a";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(SQ.x, SQ.y + SQ.h/2 - 30, SQ.w, 60);
+  ctx.fillStyle = "#5a8a2a";
   ctx.textAlign = "center";
   ctx.font = "bold 28px Courier New";
   ctx.fillText("FIGURE CLEARED!", SQ.x + SQ.w/2, SQ.y + SQ.h/2 + 8);
 }
 
 function render() {
-  ctx.fillStyle = "#0f1a0f";
+  ctx.fillStyle = "#fbf4df";
   ctx.fillRect(0, 0, W, H);
 
   // ground area below square
-  ctx.fillStyle = "#08120a";
+  ctx.fillStyle = "#e7d8b2";
   ctx.fillRect(0, SQ.y + SQ.h, W, H - (SQ.y + SQ.h));
 
   drawSquare();
