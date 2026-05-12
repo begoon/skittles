@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Gorodki</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0a0a0a;
+    color: #c8e6b3;
+    font-family: "Courier New", monospace;
+    overflow: hidden;
+    user-select: none;
+  }
+  #wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    justify-content: center;
+  }
+  #hud {
+    width: 600px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    background: #1b2a1b;
+    border: 2px solid #4a7a3a;
+    border-bottom: none;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+  #hud .row { display: flex; justify-content: space-between; gap: 8px; }
+  #hud .cell { display: flex; gap: 8px; white-space: nowrap; }
+  #hud .label { color: #6f9a5a; }
+  #hud .value { color: #d8ff9a; font-weight: bold; }
+  canvas {
+    background: #0f1a0f;
+    border: 2px solid #4a7a3a;
+    image-rendering: pixelated;
+    display: block;
+    touch-action: manipulation;
+    max-width: 100vw;
+    max-height: calc(100vh - 80px);
+    height: auto;
+  }
+  #hud, #help { max-width: 100vw; box-sizing: border-box; }
+  #help {
+    width: 600px;
+    padding: 6px 12px;
+    background: #1b2a1b;
+    border: 2px solid #4a7a3a;
+    border-top: none;
+    font-size: 12px;
+    color: #7fa86a;
+    text-align: center;
+    letter-spacing: 1px;
+  }
+  .blink { animation: blink 0.7s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div class="row">
+      <div class="cell"><span class="label">FIGURE</span><span class="value" id="figName">—</span></div>
+      <div class="cell"><span class="label">#</span><span class="value" id="figNum">1/15</span></div>
+    </div>
+    <div class="row">
+      <div class="cell"><span class="label">THROWS</span><span class="value" id="throws">20</span></div>
+      <div class="cell"><span class="label">SCORE</span><span class="value" id="score">0</span></div>
+    </div>
+  </div>
+  <canvas id="cv" width="600" height="700"></canvas>
+  <div id="help">TAP / CLICK / SPACE — THROW BAT &nbsp;·&nbsp; R — NEW GAME</div>
+</div>
+<script>
+"use strict";
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+
+// ============================================================
+// FORMATIONS (15 traditional gorodki figures)
+// Coordinates are within a unit square (0..1, 0..1), 5 pins each.
+// Pin = { x, y, horiz: true/false }  horiz means lying horizontally.
+// ============================================================
+const PIN_LEN = 0.18;   // length of a cylinder in unit square
+const PIN_D   = 0.08;   // diameter
+
+const FIGURES = [
+  { name: "CANNON",     pins: [ // Cannon
+      {x:0.30,y:0.50,h:true}, {x:0.30,y:0.50-PIN_D,h:true}, {x:0.30,y:0.50+PIN_D,h:true},
+      {x:0.30+PIN_LEN/2+PIN_D/2,y:0.50-PIN_D/2,h:false},
+      {x:0.30+PIN_LEN/2+PIN_D/2,y:0.50+PIN_D/2,h:false},
+  ]},
+  { name: "STAR",       pins: [ // Star
+      {x:0.50,y:0.50,h:false},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50-PIN_LEN/2+PIN_D/2,h:true},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.50-PIN_LEN/2+PIN_D/2,h:true},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50+PIN_LEN/2-PIN_D/2,h:true},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.50+PIN_LEN/2-PIN_D/2,h:true},
+  ]},
+  { name: "WELL",       pins: [ // Well
+      {x:0.50-PIN_LEN/2,y:0.50-PIN_D,h:true},
+      {x:0.50-PIN_LEN/2,y:0.50+PIN_D,h:true},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50,h:false},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.50,h:false},
+      {x:0.50+PIN_LEN/2,y:0.50,h:true},
+  ]},
+  { name: "ARTILLERY",  pins: [ // Artillery
+      {x:0.50,y:0.50,h:true},
+      {x:0.50,y:0.50-PIN_D,h:true},
+      {x:0.50,y:0.50+PIN_D,h:true},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50-PIN_LEN/2,h:false},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50+PIN_LEN/2,h:false},
+  ]},
+  { name: "MACHINE GUN", pins: [ // Machine gun nest
+      {x:0.50,y:0.50,h:false},
+      {x:0.50+PIN_D,y:0.50,h:false},
+      {x:0.50-PIN_D,y:0.50,h:false},
+      {x:0.50,y:0.50-PIN_LEN/2-PIN_D/2,h:true},
+      {x:0.50,y:0.50+PIN_LEN/2+PIN_D/2,h:true},
+  ]},
+  { name: "SENTRIES",   pins: [ // Sentries
+      {x:0.30,y:0.50,h:false},
+      {x:0.40,y:0.50,h:false},
+      {x:0.50,y:0.50,h:false},
+      {x:0.60,y:0.50,h:false},
+      {x:0.70,y:0.50,h:false},
+  ]},
+  { name: "ARROW",      pins: [ // Arrow
+      {x:0.35,y:0.50,h:true},
+      {x:0.50,y:0.50,h:true},
+      {x:0.65,y:0.50,h:true},
+      {x:0.65,y:0.50-PIN_LEN/2+PIN_D/2,h:false},
+      {x:0.65,y:0.50+PIN_LEN/2-PIN_D/2,h:false},
+  ]},
+  { name: "SICKLE",     pins: [ // Sickle
+      {x:0.50,y:0.40,h:true},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.40+PIN_LEN/2-PIN_D/2,h:false},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.40+PIN_LEN+PIN_D/2,h:false},
+      {x:0.50,y:0.40+PIN_LEN,h:true},
+      {x:0.50-PIN_LEN/2,y:0.40+PIN_LEN/2-PIN_D/2,h:false},
+  ]},
+  { name: "RACKET",     pins: [ // Racket
+      {x:0.50,y:0.40,h:true},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.40+PIN_LEN/2-PIN_D/2,h:false},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.40+PIN_LEN/2-PIN_D/2,h:false},
+      {x:0.50,y:0.40+PIN_LEN-PIN_D,h:true},
+      {x:0.50,y:0.40+PIN_LEN*1.5+PIN_D,h:false},
+  ]},
+  { name: "CRAYFISH",   pins: [ // Crayfish
+      {x:0.50,y:0.50,h:true},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50-PIN_D,h:false},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.50-PIN_D,h:false},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50+PIN_D,h:false},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.50+PIN_D,h:false},
+  ]},
+  { name: "FORK",       pins: [ // Fork
+      {x:0.50,y:0.55,h:true},
+      {x:0.50-PIN_LEN/2+PIN_D/2,y:0.55-PIN_LEN/2-PIN_D/2,h:false},
+      {x:0.50,y:0.55-PIN_LEN/2-PIN_D/2,h:false},
+      {x:0.50+PIN_LEN/2-PIN_D/2,y:0.55-PIN_LEN/2-PIN_D/2,h:false},
+      {x:0.50,y:0.55+PIN_D,h:false},
+  ]},
+  { name: "SHOOTING RANGE", pins: [ // Shooting range
+      {x:0.50,y:0.50,h:false},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50,h:true},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.50,h:true},
+      {x:0.50-PIN_LEN-PIN_D,y:0.50,h:false},
+      {x:0.50+PIN_LEN+PIN_D,y:0.50,h:false},
+  ]},
+  { name: "AIRPLANE",   pins: [ // Airplane
+      {x:0.50,y:0.50,h:false},
+      {x:0.50,y:0.50-PIN_D,h:false},
+      {x:0.50-PIN_LEN/2-PIN_D/2,y:0.50,h:true},
+      {x:0.50+PIN_LEN/2+PIN_D/2,y:0.50,h:true},
+      {x:0.50,y:0.50+PIN_LEN/2,h:true},
+  ]},
+  { name: "LETTER",     pins: [ // Letter (envelope)
+      {x:0.50-PIN_LEN/2,y:0.50-PIN_D/2,h:true},
+      {x:0.50+PIN_LEN/2,y:0.50-PIN_D/2,h:true},
+      {x:0.50-PIN_LEN/2,y:0.50+PIN_D/2,h:true},
+      {x:0.50+PIN_LEN/2,y:0.50+PIN_D/2,h:true},
+      {x:0.50,y:0.50,h:false},
+  ]},
+  { name: "SEALED LETTER", pins: [ // Sealed letter (X inside square)
+      {x:0.50-PIN_LEN/2,y:0.50-PIN_LEN/2+PIN_D/2,h:false},
+      {x:0.50+PIN_LEN/2,y:0.50-PIN_LEN/2+PIN_D/2,h:false},
+      {x:0.50-PIN_LEN/2,y:0.50+PIN_LEN/2-PIN_D/2,h:false},
+      {x:0.50+PIN_LEN/2,y:0.50+PIN_LEN/2-PIN_D/2,h:false},
+      {x:0.50,y:0.50,h:false},
+  ]},
+];
+
+// ============================================================
+// State
+// ============================================================
+const SQ = { x: 100, y: 60, w: 400, h: 400 };  // playing square ("city")
+const BAT = { len: 110, w: 14 };
+const PIVOT = { x: W/2, y: 600 };               // bat pivot point
+
+let pins = [];           // active pins {x,y,vx,vy,angle,vang,h,len,d,alive}
+let bat = null;          // {state:'aim'|'fly'|'gone', angle, vang, x, y, vx, vy}
+let figureIdx = 0;
+let throwsLeft = 20;
+let score = 0;
+let timer = 5.0;
+let gameOver = false;
+let wonGame = false;
+let cleared = false;     // current figure cleared
+let clearedTimer = 0;
+let lastT = performance.now();
+
+// ============================================================
+// Audio (Web Audio synth — no external samples)
+// ============================================================
+let audio = null;
+function initAudio() {
+  if (audio) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    audio = { ctx: new Ctx() };
+  } catch (e) { audio = { ctx: null }; }
+}
+function resumeAudio() {
+  if (audio && audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+}
+function envGain(start, peak, decay) {
+  const t = audio.ctx.currentTime;
+  const g = audio.ctx.createGain();
+  g.gain.setValueAtTime(start, t);
+  g.gain.linearRampToValueAtTime(peak, t + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+  return g;
+}
+function makeNoise(durSec) {
+  const buf = audio.ctx.createBuffer(1, Math.ceil(audio.ctx.sampleRate * durSec), audio.ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = audio.ctx.createBufferSource();
+  src.buffer = buf;
+  return src;
+}
+function playThrow() {
+  if (!audio || !audio.ctx) return;
+  const ctx = audio.ctx, t = ctx.currentTime;
+  const src = makeNoise(0.25);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(1800, t);
+  bp.frequency.exponentialRampToValueAtTime(400, t + 0.22);
+  bp.Q.value = 4;
+  const g = envGain(0.0001, 0.35, 0.25);
+  src.connect(bp).connect(g).connect(ctx.destination);
+  src.start(t);
+  src.stop(t + 0.26);
+}
+function playHit() {
+  if (!audio || !audio.ctx) return;
+  const ctx = audio.ctx, t = ctx.currentTime;
+  // wood thunk: short triangle + noise burst
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(220, t);
+  osc.frequency.exponentialRampToValueAtTime(80, t + 0.12);
+  const g1 = envGain(0.0001, 0.5, 0.14);
+  osc.connect(g1).connect(ctx.destination);
+  osc.start(t); osc.stop(t + 0.16);
+  const noise = makeNoise(0.06);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 1200;
+  const g2 = envGain(0.0001, 0.3, 0.05);
+  noise.connect(hp).connect(g2).connect(ctx.destination);
+  noise.start(t); noise.stop(t + 0.07);
+}
+function playBump() {
+  if (!audio || !audio.ctx) return;
+  const ctx = audio.ctx, t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(140, t);
+  osc.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+  const g = envGain(0.0001, 0.25, 0.10);
+  osc.connect(g).connect(ctx.destination);
+  osc.start(t); osc.stop(t + 0.12);
+}
+function playTada() {
+  if (!audio || !audio.ctx) return;
+  const ctx = audio.ctx, t0 = ctx.currentTime;
+  // Classic "ta-DAAA!": short pickup note, then sustained chord
+  const pickup = { f: 587.33, start: 0.00, dur: 0.18 };          // D5
+  const chord  = [783.99, 987.77, 1174.66];                       // G5, B5, D6
+  const chordStart = 0.20;
+  const chordDur   = 0.95;
+
+  const playNote = (freq, start, dur, peak, type='triangle') => {
+    const t = t0 + start;
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    // tiny vibrato during sustain for a "fanfare" feel
+    if (dur > 0.3) {
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.frequency.value = 6;
+      lfoGain.gain.value = 4;
+      lfo.connect(lfoGain).connect(osc.frequency);
+      lfo.start(t + 0.15); lfo.stop(t + dur);
+    }
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.02);
+    g.gain.linearRampToValueAtTime(peak * 0.85, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  };
+
+  playNote(pickup.f, pickup.start, pickup.dur, 0.22, 'triangle');
+  chord.forEach(f => playNote(f, chordStart, chordDur, 0.18, 'triangle'));
+
+  // Add a subtle "snare roll" of noise under the chord for extra fanfare
+  const noise = makeNoise(0.25);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 3000; bp.Q.value = 2;
+  const ng = ctx.createGain();
+  const nt = t0 + chordStart;
+  ng.gain.setValueAtTime(0.0001, nt);
+  ng.gain.linearRampToValueAtTime(0.08, nt + 0.02);
+  ng.gain.exponentialRampToValueAtTime(0.0001, nt + 0.25);
+  noise.connect(bp).connect(ng).connect(ctx.destination);
+  noise.start(nt); noise.stop(nt + 0.27);
+}
+
+function playClear() {
+  if (!audio || !audio.ctx) return;
+  const ctx = audio.ctx, t0 = ctx.currentTime;
+  // Triumphant arpeggio: C5 - E5 - G5 - C6
+  const notes = [523.25, 659.25, 783.99, 1046.5];
+  notes.forEach((f, i) => {
+    const t = t0 + i * 0.09;
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(f, t);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.18, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t); osc.stop(t + 0.28);
+  });
+}
+
+function unitToWorld(p) {
+  return { x: SQ.x + p.x * SQ.w, y: SQ.y + p.y * SQ.h };
+}
+
+function loadFigure(i) {
+  const fig = FIGURES[i];
+  pins = fig.pins.map(p => {
+    const w = unitToWorld(p);
+    const len = PIN_LEN * SQ.w;
+    const d   = PIN_D   * SQ.w;
+    return {
+      x: w.x, y: w.y,
+      vx: 0, vy: 0,
+      angle: p.h ? Math.PI/2 : 0,
+      vang: 0,
+      len, d,
+      alive: true,
+      insideSq: true,
+    };
+  });
+  document.getElementById("figName").textContent = fig.name;
+  document.getElementById("figNum").textContent = (i+1) + "/15";
+  resetBat();
+  timer = 5.0;
+  cleared = false;
+  clearedTimer = 0;
+}
+
+function resetBat() {
+  bat = {
+    state: 'aim',
+    angle: 0,        // 0 = straight up
+    vang: 2.2,       // swing speed (rad/s)
+    x: PIVOT.x, y: PIVOT.y,
+    vx: 0, vy: 0,
+    spin: 0,
+  };
+}
+
+function throwBat(randomly=false) {
+  if (bat.state !== 'aim') return;
+  if (throwsLeft <= 0) return;
+  let a = bat.angle;
+  if (randomly) a = (Math.random() - 0.5) * 1.6;  // wide random shot
+  bat.angle = a;
+  // Seed bat center at the current visual center (mid of the swung bat)
+  bat.x = PIVOT.x + Math.sin(a) * BAT.len/2;
+  bat.y = PIVOT.y - Math.cos(a) * BAT.len/2;
+  const speed = 900;
+  bat.vx = Math.sin(a) * speed;
+  bat.vy = -Math.cos(a) * speed;
+  bat.state = 'fly';
+  bat.spin = 16 * (a >= 0 ? 1 : -1);
+  throwsLeft--;
+  document.getElementById("throws").textContent = throwsLeft;
+  playThrow();
+}
+
+// ============================================================
+// Input
+// ============================================================
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    initAudio(); resumeAudio();
+    if (gameOver) { startGame(); return; }
+    throwBat(false);
+  }
+  if (e.code === 'KeyR') { initAudio(); resumeAudio(); startGame(); }
+});
+cv.addEventListener('mousedown', e => {
+  initAudio(); resumeAudio();
+  if (gameOver) { startGame(); return; }
+  throwBat(false);
+});
+cv.addEventListener('touchstart', e => {
+  e.preventDefault();
+  initAudio(); resumeAudio();
+  if (gameOver) { startGame(); return; }
+  throwBat(false);
+}, { passive: false });
+
+// ============================================================
+// Game flow
+// ============================================================
+function startGame() {
+  figureIdx = 0;
+  throwsLeft = 20;
+  score = 0;
+  gameOver = false;
+  wonGame = false;
+  document.getElementById("score").textContent = score;
+  document.getElementById("throws").textContent = throwsLeft;
+  loadFigure(0);
+}
+
+function checkCleared() {
+  // Figure is "cleared" when all alive pins are outside the square area.
+  for (const p of pins) {
+    if (!p.alive) continue;
+    const inX = p.x > SQ.x - p.d && p.x < SQ.x + SQ.w + p.d;
+    const inY = p.y > SQ.y - p.d && p.y < SQ.y + SQ.h + p.d;
+    if (inX && inY) return false;
+  }
+  return true;
+}
+
+// ============================================================
+// Physics
+// ============================================================
+function pinSegment(p) {
+  // Returns the two endpoints of pin's axis (a line segment of length p.len).
+  const dx = Math.cos(p.angle) * (p.len/2 - p.d/2);
+  const dy = Math.sin(p.angle) * (p.len/2 - p.d/2);
+  return { ax: p.x - dx, ay: p.y - dy, bx: p.x + dx, by: p.y + dy };
+}
+
+function batSegment() {
+  // Bat is a capsule from pivot outward by BAT.len when aiming;
+  // when flying, oriented along its velocity direction with spin.
+  if (bat.state === 'aim') {
+    const tipX = PIVOT.x + Math.sin(bat.angle) * BAT.len;
+    const tipY = PIVOT.y - Math.cos(bat.angle) * BAT.len;
+    return { ax: PIVOT.x, ay: PIVOT.y, bx: tipX, by: tipY };
+  } else {
+    // flying: bat rotates around its center
+    const ang = bat.angle;  // we'll repurpose: orientation of bat
+    const dx = Math.sin(ang) * BAT.len/2;
+    const dy = -Math.cos(ang) * BAT.len/2;
+    return { ax: bat.x - dx, ay: bat.y - dy, bx: bat.x + dx, by: bat.y + dy };
+  }
+}
+
+function segDist(ax, ay, bx, by, cx, cy, dx, dy) {
+  // shortest distance between two segments (A->B) and (C->D), with closest points
+  // returns {dist, ux, uy, vx, vy}
+  const r = { x: bx-ax, y: by-ay };
+  const s = { x: dx-cx, y: dy-cy };
+  const w = { x: ax-cx, y: ay-cy };
+  const a = r.x*r.x + r.y*r.y;
+  const b = r.x*s.x + r.y*s.y;
+  const c = s.x*s.x + s.y*s.y;
+  const d_ = r.x*w.x + r.y*w.y;
+  const e = s.x*w.x + s.y*w.y;
+  const denom = a*c - b*b;
+  let t, u;
+  if (denom < 1e-7) { t = 0; u = (b > c ? d_/b : e/c); }
+  else { t = (b*e - c*d_)/denom; u = (a*e - b*d_)/denom; }
+  t = Math.max(0, Math.min(1, t));
+  u = Math.max(0, Math.min(1, u));
+  const ux = ax + r.x*t, uy = ay + r.y*t;
+  const vx = cx + s.x*u, vy = cy + s.y*u;
+  const ddx = ux - vx, ddy = uy - vy;
+  return { dist: Math.hypot(ddx, ddy), ux, uy, vx, vy };
+}
+
+function update(dt) {
+  // Timer
+  if (!gameOver && !cleared) {
+    if (bat.state === 'aim') {
+      timer -= dt;
+      if (timer <= 0) {
+        throwBat(true); // auto random throw
+      }
+    }
+  }
+
+  // Bat update
+  if (bat.state === 'aim') {
+    bat.angle += bat.vang * dt;
+    if (bat.angle > 1.0)  { bat.angle = 1.0;  bat.vang = -Math.abs(bat.vang); }
+    if (bat.angle < -1.0) { bat.angle = -1.0; bat.vang =  Math.abs(bat.vang); }
+  } else if (bat.state === 'fly') {
+    bat.x += bat.vx * dt;
+    bat.y += bat.vy * dt;
+    bat.angle += bat.spin * dt;
+    // bat leaves screen
+    if (bat.y < -100 || bat.x < -100 || bat.x > W+100) {
+      bat.state = 'gone';
+    }
+  }
+
+  // Bat <-> pin collisions
+  if (bat.state === 'fly') {
+    const bs = batSegment();
+    for (const p of pins) {
+      if (!p.alive) continue;
+      const ps = pinSegment(p);
+      const r = segDist(bs.ax, bs.ay, bs.bx, bs.by, ps.ax, ps.ay, ps.bx, ps.by);
+      const minDist = BAT.w/2 + p.d/2;
+      if (r.dist < minDist) {
+        // Apply impulse along bat velocity direction, with offset for spin
+        const bspeed = Math.hypot(bat.vx, bat.vy) || 1;
+        const nx = bat.vx / bspeed;
+        const ny = bat.vy / bspeed;
+        const impulse = 700 + Math.random() * 200;
+        p.vx += nx * impulse;
+        p.vy += ny * impulse;
+        // Torque: random spin from glancing hit
+        p.vang += (Math.random() - 0.5) * 18 + (r.ux - p.x) * 0.05;
+        // Slow bat a bit
+        bat.vx *= 0.85;
+        bat.vy *= 0.85;
+        playHit();
+      }
+    }
+  }
+
+  // Pin physics
+  for (const p of pins) {
+    if (!p.alive) continue;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.angle += p.vang * dt;
+    // friction
+    const fr = Math.pow(0.18, dt);
+    p.vx *= fr;
+    p.vy *= fr;
+    p.vang *= Math.pow(0.25, dt);
+    if (Math.abs(p.vx) < 1) p.vx = 0;
+    if (Math.abs(p.vy) < 1) p.vy = 0;
+
+    // bump-out detection: pin crossed from inside the square to outside
+    if (p.insideSq) {
+      const stillInside =
+        p.x > SQ.x && p.x < SQ.x + SQ.w &&
+        p.y > SQ.y && p.y < SQ.y + SQ.h;
+      if (!stillInside) {
+        p.insideSq = false;
+        playBump();
+      }
+    }
+
+    // off screen
+    if (p.x < -50 || p.x > W+50 || p.y < -50 || p.y > H+50) p.alive = false;
+  }
+
+  // Pin <-> pin collisions (simple, treat as circles for speed)
+  for (let i = 0; i < pins.length; i++) {
+    for (let j = i+1; j < pins.length; j++) {
+      const a = pins[i], b = pins[j];
+      if (!a.alive || !b.alive) continue;
+      const ps1 = pinSegment(a), ps2 = pinSegment(b);
+      const r = segDist(ps1.ax, ps1.ay, ps1.bx, ps1.by, ps2.ax, ps2.ay, ps2.bx, ps2.by);
+      const minDist = a.d/2 + b.d/2;
+      if (r.dist < minDist && r.dist > 0.01) {
+        // separation
+        const overlap = minDist - r.dist;
+        const nx = (r.ux - r.vx) / r.dist;
+        const ny = (r.uy - r.vy) / r.dist;
+        a.x += nx * overlap * 0.5;
+        a.y += ny * overlap * 0.5;
+        b.x -= nx * overlap * 0.5;
+        b.y -= ny * overlap * 0.5;
+        // momentum transfer (elastic-ish)
+        const va = a.vx * nx + a.vy * ny;
+        const vb = b.vx * nx + b.vy * ny;
+        const dv = (vb - va);
+        a.vx += dv * nx * 0.8;
+        a.vy += dv * ny * 0.8;
+        b.vx -= dv * nx * 0.8;
+        b.vy -= dv * ny * 0.8;
+        a.vang += (Math.random()-0.5) * 4;
+        b.vang += (Math.random()-0.5) * 4;
+      }
+    }
+  }
+
+  // Check after bat is gone
+  if (bat.state === 'gone' && !cleared) {
+    if (checkCleared()) {
+      cleared = true;
+      score += 50 + Math.max(0, throwsLeft) * 2;
+      document.getElementById("score").textContent = score;
+      clearedTimer = 1.2;
+      playClear();
+    } else {
+      // wait until pins settle, then reset
+      const allStill = pins.every(p => !p.alive || (Math.abs(p.vx) < 5 && Math.abs(p.vy) < 5));
+      if (allStill) {
+        if (throwsLeft <= 0) {
+          gameOver = true;
+          playTada();
+        } else {
+          resetBat();
+          timer = 5.0;
+        }
+      }
+    }
+  }
+
+  if (cleared) {
+    clearedTimer -= dt;
+    if (clearedTimer <= 0) {
+      figureIdx++;
+      if (figureIdx >= FIGURES.length) {
+        wonGame = true;
+        gameOver = true;
+        playTada();
+      } else if (throwsLeft <= 0) {
+        gameOver = true;
+        playTada();
+      } else {
+        loadFigure(figureIdx);
+      }
+    }
+  }
+}
+
+// ============================================================
+// Rendering
+// ============================================================
+function drawPin(p) {
+  if (!p.alive) return;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.angle);
+  // shadow
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(-p.len/2+3, -p.d/2+3, p.len, p.d);
+  // body
+  const grad = ctx.createLinearGradient(0, -p.d/2, 0, p.d/2);
+  grad.addColorStop(0, "#d4a36a");
+  grad.addColorStop(0.5, "#a36b3a");
+  grad.addColorStop(1, "#5a3a1f");
+  ctx.fillStyle = grad;
+  ctx.fillRect(-p.len/2, -p.d/2, p.len, p.d);
+  // end caps
+  ctx.fillStyle = "#8b5a2b";
+  ctx.beginPath();
+  ctx.ellipse(-p.len/2, 0, p.d/3, p.d/2, 0, 0, Math.PI*2);
+  ctx.ellipse( p.len/2, 0, p.d/3, p.d/2, 0, 0, Math.PI*2);
+  ctx.fill();
+  // wood grain
+  ctx.strokeStyle = "rgba(60,30,10,0.5)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-p.len/2+4, -p.d/4); ctx.lineTo(p.len/2-4, -p.d/4);
+  ctx.moveTo(-p.len/2+4,  p.d/6); ctx.lineTo(p.len/2-4,  p.d/6);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBat() {
+  let cx, cy, ang;
+  if (bat.state === 'aim') {
+    cx = PIVOT.x + Math.sin(bat.angle) * BAT.len/2;
+    cy = PIVOT.y - Math.cos(bat.angle) * BAT.len/2;
+    ang = bat.angle;
+  } else if (bat.state === 'fly') {
+    cx = bat.x; cy = bat.y; ang = bat.angle;
+  } else {
+    return;
+  }
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  // shadow
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fillRect(-BAT.w/2+2, -BAT.len/2+3, BAT.w, BAT.len);
+  // handle (bottom half)
+  const grad = ctx.createLinearGradient(-BAT.w/2, 0, BAT.w/2, 0);
+  grad.addColorStop(0, "#6b4226");
+  grad.addColorStop(0.5, "#a36b3a");
+  grad.addColorStop(1, "#3a2110");
+  ctx.fillStyle = grad;
+  ctx.fillRect(-BAT.w/2, -BAT.len/2, BAT.w, BAT.len);
+  // tip ring
+  ctx.fillStyle = "#5a3a1f";
+  ctx.fillRect(-BAT.w/2, -BAT.len/2, BAT.w, 6);
+  ctx.fillRect(-BAT.w/2, -BAT.len/2+10, BAT.w, 2);
+  // grip wrap
+  ctx.fillStyle = "#2a1808";
+  for (let i = 0; i < 6; i++) {
+    ctx.fillRect(-BAT.w/2, BAT.len/2 - 6 - i*8, BAT.w, 2);
+  }
+  ctx.restore();
+}
+
+function drawSquare() {
+  // The "city"
+  ctx.fillStyle = "#15301a";
+  ctx.fillRect(SQ.x, SQ.y, SQ.w, SQ.h);
+  // crosshatch
+  ctx.strokeStyle = "rgba(80,140,90,0.18)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 8; i++) {
+    ctx.beginPath();
+    ctx.moveTo(SQ.x + i*SQ.w/8, SQ.y);
+    ctx.lineTo(SQ.x + i*SQ.w/8, SQ.y + SQ.h);
+    ctx.moveTo(SQ.x, SQ.y + i*SQ.h/8);
+    ctx.lineTo(SQ.x + SQ.w, SQ.y + i*SQ.h/8);
+    ctx.stroke();
+  }
+  // border
+  ctx.strokeStyle = "#7fd06a";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(SQ.x, SQ.y, SQ.w, SQ.h);
+  // corner brackets
+  ctx.strokeStyle = "#cfff9a";
+  ctx.lineWidth = 2;
+  const c = 14;
+  [[SQ.x, SQ.y, 1, 1],[SQ.x+SQ.w, SQ.y, -1, 1],[SQ.x, SQ.y+SQ.h, 1, -1],[SQ.x+SQ.w, SQ.y+SQ.h, -1, -1]].forEach(([x,y,sx,sy])=>{
+    ctx.beginPath();
+    ctx.moveTo(x, y + sy*c);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + sx*c, y);
+    ctx.stroke();
+  });
+}
+
+function drawThrowLine() {
+  if (bat.state !== 'aim') return;
+  ctx.save();
+  ctx.translate(PIVOT.x, PIVOT.y);
+  ctx.rotate(bat.angle);
+  ctx.strokeStyle = "rgba(120,255,120,0.25)";
+  ctx.setLineDash([4, 6]);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, -700);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawPivot() {
+  ctx.fillStyle = "#3a5a2a";
+  ctx.beginPath();
+  ctx.arc(PIVOT.x, PIVOT.y, 8, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = "#7fd06a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawTimer() {
+  const t = Math.max(0, timer);
+  const urgent = t < 2.0 && bat.state === 'aim';
+  const y = PIVOT.y + 36;
+  // label
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#6f9a5a";
+  ctx.font = "12px Courier New";
+  ctx.fillText("TIMER", PIVOT.x, y);
+  // value
+  ctx.fillStyle = urgent ? (Math.floor(t * 6) % 2 ? "#ff6a6a" : "#ffd86a") : "#d8ff9a";
+  ctx.font = "bold 28px Courier New";
+  ctx.fillText(t.toFixed(1), PIVOT.x, y + 26);
+  // progress bar
+  const bw = 160, bh = 6;
+  const bx = PIVOT.x - bw/2, by = y + 36;
+  ctx.fillStyle = "#1b2a1b";
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = urgent ? "#ff6a6a" : "#7fd06a";
+  ctx.fillRect(bx, by, bw * (t / 5.0), bh);
+  ctx.strokeStyle = "#4a7a3a";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+}
+
+function drawOverlay() {
+  if (!gameOver) return;
+  ctx.fillStyle = "rgba(0,0,0,0.78)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = wonGame ? "#d8ff9a" : "#ff9a9a";
+  ctx.textAlign = "center";
+  ctx.font = "bold 36px Courier New";
+  ctx.fillText(wonGame ? "YOU WIN!" : "GAME OVER", W/2, H/2 - 30);
+  ctx.fillStyle = "#c8e6b3";
+  ctx.font = "20px Courier New";
+  ctx.fillText("SCORE: " + score, W/2, H/2 + 10);
+  ctx.font = "16px Courier New";
+  ctx.fillText("SPACE / R — NEW GAME", W/2, H/2 + 50);
+}
+
+function drawClearedBanner() {
+  if (!cleared) return;
+  ctx.fillStyle = "rgba(0,40,0,0.7)";
+  ctx.fillRect(SQ.x, SQ.y + SQ.h/2 - 30, SQ.w, 60);
+  ctx.fillStyle = "#d8ff9a";
+  ctx.textAlign = "center";
+  ctx.font = "bold 28px Courier New";
+  ctx.fillText("FIGURE CLEARED!", SQ.x + SQ.w/2, SQ.y + SQ.h/2 + 8);
+}
+
+function render() {
+  ctx.fillStyle = "#0f1a0f";
+  ctx.fillRect(0, 0, W, H);
+
+  // ground area below square
+  ctx.fillStyle = "#08120a";
+  ctx.fillRect(0, SQ.y + SQ.h, W, H - (SQ.y + SQ.h));
+
+  drawSquare();
+  drawThrowLine();
+  for (const p of pins) drawPin(p);
+  drawBat();
+  drawPivot();
+  drawTimer();
+  drawClearedBanner();
+  drawOverlay();
+}
+
+// ============================================================
+// Main loop
+// ============================================================
+function loop(now) {
+  const dt = Math.min(0.033, (now - lastT) / 1000);
+  lastT = now;
+  if (!gameOver) update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+startGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
