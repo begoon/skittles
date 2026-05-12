@@ -903,10 +903,6 @@ function render() {
   ctx.fillStyle = "#fbf4df";
   ctx.fillRect(0, 0, W, H);
 
-  // ground area below square
-  ctx.fillStyle = "#e7d8b2";
-  ctx.fillRect(0, SQ.y + SQ.h, W, H - (SQ.y + SQ.h));
-
   drawSquare();
   drawThrowLine();
   for (const p of pins) drawPin(p);
